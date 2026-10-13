@@ -1,170 +1,324 @@
-import random
-import tkinter as tk
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cyber Snake Arcade</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        body {
+            margin: 0; padding: 0;
+            background-color: #020408; color: #fff;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden; touch-action: none;
+        }
+        .container {
+            position: relative;
+            width: 400px; height: 560px;
+            border: 2px solid #00f0ff; border-radius: 20px;
+            background: radial-gradient(circle at center, #0a1128 0%, #020408 100%);
+            box-shadow: 0 0 40px rgba(0,240,255,0.4), inset 0 0 20px rgba(0,240,255,0.15);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            overflow: hidden;
+        }
+        .hud {
+            position: absolute; top: 12px; left: 16px; right: 16px;
+            display: flex; justify-content: space-between;
+            font-size: 14px; font-weight: bold; z-index: 5;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+        }
+        canvas { outline: none; cursor: pointer; background: rgba(2, 4, 8, 0.6); border-radius: 10px; }
 
-# Các thông số cơ bản của trò chơi
-WIDTH = 600
-HEIGHT = 400
-SPEED = 100  # Tốc độ di chuyển (mili-giây), số càng nhỏ rắn chạy càng nhanh
-SPACE_SIZE = 20
-BODY_PARTS = 3
-SNAKE_COLOR = "#00FF00"  # Màu xanh lá cho rắn
-FOOD_COLOR = "#FF0000"  # Màu đỏ cho mồi
-BACKGROUND_COLOR = "#000000"  # Màu đen cho nền
+        .touch-controls {
+            position: absolute; bottom: 15px; left: 16px; right: 16px;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 10; pointer-events: none; opacity: 0.9;
+        }
+        .dpad {
+            position: relative; width: 140px; height: 140px; pointer-events: auto;
+        }
+        .d-btn {
+            position: absolute; width: 45px; height: 45px;
+            background: rgba(0, 240, 255, 0.2); border: 2px solid #00f0ff;
+            border-radius: 10px; color: #fff; font-size: 18px; font-weight: bold;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 10px rgba(0,240,255,0.3); cursor: pointer;
+        }
+        .d-btn:active { background: rgba(0, 240, 255, 0.5); transform: scale(0.92); }
+        .btn-up { top: 0; left: 47px; }
+        .btn-down { bottom: 0; left: 47px; }
+        .btn-left { top: 47px; left: 0; }
+        .btn-right { top: 47px; right: 0; }
+    </style>
+</head>
+<body>
 
+<div class="container">
+    <div class="hud" id="hudArea" style="display: none;">
+        <div>Điểm: <span id="score" style="color: #00f0ff;">0</span></div>
+        <div style="color: #ffb703;">KỶ LỤC: <span id="highScore">0</span></div>
+    </div>
 
-class Snake:
+    <canvas id="gameCanvas" width="360" height="360" tabindex="1"></canvas>
 
-  def __init__(self):
-    self.body_size = BODY_PARTS
-    self.coordinates = []
-    self.squares = []
+    <div class="touch-controls" id="touchControls" style="display: none;">
+        <div class="dpad">
+            <div class="d-btn btn-up" id="btnUp">▲</div>
+            <div class="d-btn btn-down" id="btnDown">▼</div>
+            <div class="d-btn btn-left" id="btnLeft">◄</div>
+            <div class="d-btn btn-right" id="btnRight">►</div>
+        </div>
+    </div>
+</div>
 
-    for i in range(BODY_PARTS):
-      self.coordinates.append([100 - (i * SPACE_SIZE), 100])
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const scoreElement = document.getElementById("score");
+    const highScoreElement = document.getElementById("highScore");
+    const hudArea = document.getElementById("hudArea");
+    const touchControls = document.getElementById("touchControls");
 
-    for x, y in self.coordinates:
-      square = canvas.create_rectangle(
-          x, y, x + SPACE_SIZE, y + SPACE_SIZE, fill=SNAKE_COLOR, tag="snake"
-      )
-      self.squares.append(square)
+    const gridSize = 20;
+    const tileCount = canvas.width / gridSize;
 
+    let gameState = 'menu';
+    let score = 0, highScore = localStorage.getItem('snakeHighScore') || 0;
+    let snake = [];
+    let food = { x: 0, y: 0 };
+    let dx = 1, dy = 0;
+    let nextDx = 1, nextDy = 0;
+    let gameInterval = null;
+    let menuAnim = 0;
 
-class Food:
+    highScoreElement.textContent = highScore;
 
-  def __init__(self):
-    x = random.randint(0, (WIDTH // SPACE_SIZE) - 1) * SPACE_SIZE
-    y = random.randint(0, (HEIGHT // SPACE_SIZE) - 1) * SPACE_SIZE
+    function resetGame() {
+        snake = [
+            { x: 8, y: 10 },
+            { x: 7, y: 10 },
+            { x: 6, y: 10 }
+        ];
+        dx = 1; dy = 0;
+        nextDx = 1; nextDy = 0;
+        score = 0;
+        scoreElement.textContent = score;
+        spawnFood();
+    }
 
-    self.coordinates = [x, y]
-    canvas.create_oval(
-        x,
-        y,
-        x + SPACE_SIZE,
-        y + SPACE_SIZE,
-        fill=FOOD_COLOR,
-        tag="food",
-    )
+    function spawnFood() {
+        food.x = Math.floor(Math.random() * tileCount);
+        food.y = Math.floor(Math.random() * tileCount);
+        snake.forEach(part => {
+            if (part.x === food.x && part.y === food.y) spawnFood();
+        });
+    }
 
+    function startGame() {
+        gameState = 'playing';
+        resetGame();
+        hudArea.style.display = "flex";
+        touchControls.style.display = "flex";
+        if (gameInterval) clearInterval(gameInterval);
+        gameInterval = setInterval(update, 110);
+        canvas.focus();
+    }
 
-def next_turn(snake, food):
-  x, y = snake.coordinates[0]
+    function update() {
+        dx = nextDx;
+        dy = nextDy;
+        let head = { x: snake[0].x + dx, y: snake[0].y + dy };
 
-  if direction == "up":
-    y -= SPACE_SIZE
-  elif direction == "down":
-    y += SPACE_SIZE
-  elif direction == "left":
-    x -= SPACE_SIZE
-  elif direction == "right":
-    x += SPACE_SIZE
+        if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
+            endGame();
+            return;
+        }
 
-  # Thêm đầu mới cho rắn
-  snake.coordinates.insert(0, [x, y])
-  square = canvas.create_rectangle(
-      x, y, x + SPACE_SIZE, y + SPACE_SIZE, fill=SNAKE_COLOR
-  )
-  snake.squares.insert(0, square)
+        for (let i = 0; i < snake.length; i++) {
+            if (head.x === snake[i].x && head.y === snake[i].y) {
+                endGame();
+                return;
+            }
+        }
 
-  # Kiểm tra xem rắn có ăn mồi không
-  if x == food.coordinates[0] and y == food.coordinates[1]:
-    global score
-    score += 1
-    label.config(text=f"Điểm: {score}")
-    canvas.delete("food")
-    food = Food()
-  else:
-    # Xóa khúc đuôi cuối cùng nếu không ăn mồi để giữ nguyên độ dài
-    del snake.coordinates[-1]
-    canvas.delete(snake.squares[-1])
-    del snake.squares[-1]
+        snake.unshift(head);
 
-  if check_game_over(snake):
-    game_over()
-  else:
-    window.after(SPEED, next_turn, snake, food)
+        if (head.x === food.x && head.y === food.y) {
+            score += 10;
+            scoreElement.textContent = score;
+            if (score > highScore) {
+                highScore = score;
+                highScoreElement.textContent = highScore;
+                localStorage.setItem('snakeHighScore', highScore);
+            }
+            spawnFood();
+        } else {
+            snake.pop();
+        }
+    }
 
+    function endGame() {
+        gameState = 'gameover';
+        clearInterval(gameInterval);
+        hudArea.style.display = "none";
+        touchControls.style.display = "none";
+    }
 
-def change_direction(new_direction):
-  global direction
+    function draw() {
+        ctx.fillStyle = "#020408";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  if new_direction == "left":
-    if direction != "right":
-      direction = new_direction
-  elif new_direction == "right":
-    if direction != "left":
-      direction = new_direction
-  elif new_direction == "up":
-    if direction != "down":
-      direction = new_direction
-  elif new_direction == "down":
-    if direction != "up":
-      direction = new_direction
+        ctx.strokeStyle = "rgba(0, 240, 255, 0.05)";
+        ctx.lineWidth = 1;
+        for (let i = 0; i < canvas.width; i += gridSize) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+        }
 
+        if (gameState === 'playing') {
+            ctx.save();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#ff3366";
+            ctx.fillStyle = "#ff3366";
+            let fx = food.x * gridSize + gridSize / 2;
+            let fy = food.y * gridSize + gridSize / 2;
+            ctx.beginPath();
+            ctx.arc(fx, fy, gridSize / 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
 
-def check_game_over(snake):
-  x, y = snake.coordinates[0]
+            snake.forEach((part, index) => {
+                ctx.save();
+                ctx.shadowBlur = index === 0 ? 15 : 8;
+                ctx.shadowColor = index === 0 ? "#00f0ff" : "#7209b7";
+                ctx.fillStyle = index === 0 ? "#00f0ff" : "#4cc9f0";
+                ctx.fillRect(part.x * gridSize + 1, part.y * gridSize + 1, gridSize - 2, gridSize - 2);
+                ctx.restore();
+            });
+        } 
+        else if (gameState === 'menu') {
+            menuAnim += 0.05;
+            
+            ctx.save();
+            ctx.fillStyle = "#00f0ff";
+            ctx.font = "800 22px 'Plus Jakarta Sans'";
+            ctx.textAlign = "center";
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = "#00f0ff";
+            ctx.fillText("CYBER SNAKE", canvas.width / 2, 110);
+            
+            ctx.fillStyle = "#ff007f";
+            ctx.font = "800 12px 'Plus Jakarta Sans'";
+            ctx.shadowColor = "#ff007f";
+            ctx.shadowBlur = 15;
+            ctx.fillText("TRÒ CHƠI CON RẮN TƯƠNG LAI", canvas.width / 2, 138);
+            ctx.restore();
 
-  # Kiểm tra chạm tường
-  if x < 0 or x >= WIDTH or y < 0 or y >= HEIGHT:
-    return True
+            ctx.fillStyle = "#8892b0";
+            ctx.font = "12px 'Plus Jakarta Sans'";
+            ctx.textAlign = "center";
+            ctx.fillText("Kỷ lục hiện tại: " + highScore, canvas.width / 2, 180);
 
-  # Kiểm tra tự cắn đuôi
-  for body_part in snake.coordinates[1:]:
-    if x == body_part[0] and y == body_part[1]:
-      return True
+            let btnPulse = Math.sin(menuAnim * 3) * 4;
+            ctx.save();
+            ctx.shadowBlur = 20 + btnPulse;
+            ctx.shadowColor = "#00f0ff";
+            ctx.fillStyle = "rgba(0, 240, 255, 0.15)";
+            ctx.strokeStyle = "#00f0ff";
+            ctx.lineWidth = 2;
+            ctx.fillRect(80, 225, 200, 50);
+            ctx.strokeRect(80, 225, 200, 50);
 
-  return False
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "800 16px 'Plus Jakarta Sans'";
+            ctx.fillText("BẮT ĐẦU CHƠI", canvas.width / 2, 256);
+            ctx.restore();
+        }
+        else if (gameState === 'gameover') {
+            ctx.fillStyle = "rgba(2, 4, 8, 0.95)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            ctx.fillStyle = "#ff3366";
+            ctx.font = "bold 24px 'Plus Jakarta Sans'";
+            ctx.textAlign = "center";
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#ff3366";
+            ctx.fillText("TRÒ CHƠI KẾT THÚ", canvas.width / 2, 120);
+            ctx.shadowBlur = 0;
 
-def game_over():
-  canvas.delete(tk.ALL)
-  canvas.create_text(
-      WIDTH / 2,
-      HEIGHT / 2,
-      font=("consolas", 70),
-      text="THUA RỒI!",
-      fill="red",
-      tag="gameover",
-  )
+            ctx.fillStyle = "#fff";
+            ctx.font = "15px 'Plus Jakarta Sans'";
+            ctx.fillText("Điểm đạt được: " + score, canvas.width / 2, 170);
+            ctx.fillText("Kỷ lục: " + highScore, canvas.width / 2, 200);
 
+            ctx.save();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#00f0ff";
+            ctx.fillStyle = "rgba(0, 240, 255, 0.2)";
+            ctx.strokeStyle = "#00f0ff";
+            ctx.lineWidth = 2;
+            ctx.fillRect(80, 245, 200, 50);
+            ctx.strokeRect(80, 245, 200, 50);
+            ctx.fillStyle = "#00f0ff";
+            ctx.font = "bold 16px 'Plus Jakarta Sans'";
+            ctx.fillText("CHƠI LẠI", canvas.width / 2, 277);
+            ctx.restore();
+        }
+    }
 
-# Khởi tạo cửa sổ trò chơi
-window = tk.Tk()
-window.title("Trò chơi Con Rắn - Python")
-window.resizable(False, False)
+    setInterval(draw, 1000 / 60);
 
-score = 0
-direction = "right"
+    canvas.addEventListener("click", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
 
-label = tk.Label(window, text=f"Điểm: {score}", font=("consolas", 20))
-label.pack()
+        if (gameState === 'menu') {
+            if (mouseX >= 80 && mouseX <= 280 && mouseY >= 225 && mouseY <= 275) {
+                startGame();
+            }
+        } else if (gameState === 'gameover') {
+            if (mouseX >= 80 && mouseX <= 280 && mouseY >= 245 && mouseY <= 295) {
+                gameState = 'menu';
+            }
+        }
+    });
 
-canvas = tk.Canvas(
-    window, bg=BACKGROUND_COLOR, height=HEIGHT, width=WIDTH
-)
-canvas.pack()
+    window.addEventListener("keydown", (e) => {
+        if (gameState !== 'playing') return;
+        if ((e.key === "ArrowUp" || e.key === "w" || e.key === "W") && dy === 0) {
+            nextDx = 0; nextDy = -1; e.preventDefault();
+        }
+        else if ((e.key === "ArrowDown" || e.key === "s" || e.key === "S") && dy === 0) {
+            nextDx = 0; nextDy = 1; e.preventDefault();
+        }
+        else if ((e.key === "ArrowLeft" || e.key === "a" || e.key === "A") && dx === 0) {
+            nextDx = -1; nextDy = 0; e.preventDefault();
+        }
+        else if ((e.key === "ArrowRight" || e.key === "d" || e.key === "D") && dx === 0) {
+            nextDx = 1; nextDy = 0; e.preventDefault();
+        }
+    });
 
-window.update()
+    const btnUp = document.getElementById("btnUp");
+    const btnDown = document.getElementById("btnDown");
+    const btnLeft = document.getElementById("btnLeft");
+    const btnRight = document.getElementById("btnRight");
 
-# Căn giữa cửa sổ trên màn hình
-window_width = window.winfo_width()
-window_height = window.winfo_height()
-screen_width = window.winfo_screenwidth()
-screen_height = window.winfo_screenheight()
+    btnUp.addEventListener("touchstart", (e) => { if (dy === 0) { nextDx = 0; nextDy = -1; } e.preventDefault(); });
+    btnUp.addEventListener("mousedown", () => { if (dy === 0) { nextDx = 0; nextDy = -1; } });
 
-x = int((screen_width / 2) - (window_width / 2))
-y = int((screen_height / 2) - (window_height / 2))
-window.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    btnDown.addEventListener("touchstart", (e) => { if (dy === 0) { nextDx = 0; nextDy = 1; } e.preventDefault(); });
+    btnDown.addEventListener("mousedown", () => { if (dy === 0) { nextDx = 0; nextDy = 1; } });
 
-# Bắt sự kiện bàn phím (Phím mũi tên)
-window.bind("<Left>", lambda event: change_direction("left"))
-window.bind("<Right>", lambda event: change_direction("right"))
-window.bind("<Up>", lambda event: change_direction("up"))
-window.bind("<Down>", lambda event: change_direction("down"))
+    btnLeft.addEventListener("touchstart", (e) => { if (dx === 0) { nextDx = -1; nextDy = 0; } e.preventDefault(); });
+    btnLeft.addEventListener("mousedown", () => { if (dx === 0) { nextDx = -1; nextDy = 0; } });
 
-# Khởi chạy rắn và mồi
-snake = Snake()
-food = Food()
-window.after(SPEED, next_turn, snake, food)
+    btnRight.addEventListener("touchstart", (e) => { if (dx === 0) { nextDx = 1; nextDy = 0; } e.preventDefault(); });
+    btnRight.addEventListener("mousedown", () => { if (dx === 0) { nextDx = 1; nextDy = 0; } });
+</script>
 
-window.mainloop()
+</body>
+</html>
