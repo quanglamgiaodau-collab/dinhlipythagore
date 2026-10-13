@@ -322,3 +322,349 @@
 
 </body>
 </html>
+import streamlit as st
+import streamlit.components.v1 as components
+
+# Cấu hình giao diện trang web
+st.set_page_config(page_title="Cyber Snake Arcade", page_icon="🐍", layout="centered")
+
+# Ẩn menu mặc định của Streamlit cho giao diện game gọn gàng
+hide_streamlit_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+# Mã nguồn trò chơi nhúng trực tiếp vào Streamlit components
+game_html = """
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cyber Snake Arcade</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        body {
+            margin: 0; padding: 0;
+            background-color: #020408; color: #fff;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden; touch-action: none;
+        }
+        .container {
+            position: relative;
+            width: 400px; height: 560px;
+            border: 2px solid #00f0ff; border-radius: 20px;
+            background: radial-gradient(circle at center, #0a1128 0%, #020408 100%);
+            box-shadow: 0 0 40px rgba(0,240,255,0.4), inset 0 0 20px rgba(0,240,255,0.15);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            overflow: hidden;
+        }
+        .hud {
+            position: absolute; top: 12px; left: 16px; right: 16px;
+            display: flex; justify-content: space-between;
+            font-size: 14px; font-weight: bold; z-index: 5;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+        }
+        canvas { outline: none; cursor: pointer; background: rgba(2, 4, 8, 0.6); border-radius: 10px; }
+
+        .touch-controls {
+            position: absolute; bottom: 15px; left: 16px; right: 16px;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 10; pointer-events: none; opacity: 0.9;
+        }
+        .dpad {
+            position: relative; width: 140px; height: 140px; pointer-events: auto;
+        }
+        .d-btn {
+            position: absolute; width: 45px; height: 45px;
+            background: rgba(0, 240, 255, 0.2); border: 2px solid #00f0ff;
+            border-radius: 10px; color: #fff; font-size: 18px; font-weight: bold;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 10px rgba(0,240,255,0.3); cursor: pointer;
+        }
+        .d-btn:active { background: rgba(0, 240, 255, 0.5); transform: scale(0.92); }
+        .btn-up { top: 0; left: 47px; }
+        .btn-down { bottom: 0; left: 47px; }
+        .btn-left { top: 47px; left: 0; }
+        .btn-right { top: 47px; right: 0; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="hud" id="hudArea" style="display: none;">
+        <div>Điểm: <span id="score" style="color: #00f0ff;">0</span></div>
+        <div style="color: #ffb703;">KỶ LỤC: <span id="highScore">0</span></div>
+    </div>
+
+    <canvas id="gameCanvas" width="360" height="360" tabindex="1"></canvas>
+
+    <div class="touch-controls" id="touchControls" style="display: none;">
+        <div class="dpad">
+            <div class="d-btn btn-up" id="btnUp">▲</div>
+            <div class="d-btn btn-down" id="btnDown">▼</div>
+            <div class="d-btn btn-left" id="btnLeft">◄</div>
+            <div class="d-btn btn-right" id="btnRight">►</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const scoreElement = document.getElementById("score");
+    const highScoreElement = document.getElementById("highScore");
+    const hudArea = document.getElementById("hudArea");
+    const touchControls = document.getElementById("touchControls");
+
+    const gridSize = 20;
+    const tileCount = canvas.width / gridSize;
+
+    let gameState = 'menu';
+    let score = 0, highScore = localStorage.getItem('snakeHighScore') || 0;
+    let snake = [];
+    let food = { x: 0, y: 0 };
+    let dx = 1, dy = 0;
+    let nextDx = 1, nextDy = 0;
+    let gameInterval = null;
+    let menuAnim = 0;
+
+    highScoreElement.textContent = highScore;
+
+    function resetGame() {
+        snake = [
+            { x: 8, y: 10 },
+            { x: 7, y: 10 },
+            { x: 6, y: 10 }
+        ];
+        dx = 1; dy = 0;
+        nextDx = 1; nextDy = 0;
+        score = 0;
+        scoreElement.textContent = score;
+        spawnFood();
+    }
+
+    function spawnFood() {
+        food.x = Math.floor(Math.random() * tileCount);
+        food.y = Math.floor(Math.random() * tileCount);
+        snake.forEach(part => {
+            if (part.x === food.x && part.y === food.y) spawnFood();
+        });
+    }
+
+    function startGame() {
+        gameState = 'playing';
+        resetGame();
+        hudArea.style.display = "flex";
+        touchControls.style.display = "flex";
+        if (gameInterval) clearInterval(gameInterval);
+        gameInterval = setInterval(update, 110);
+        canvas.focus();
+    }
+
+    function update() {
+        dx = nextDx;
+        dy = nextDy;
+        let head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+        if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
+            endGame();
+            return;
+        }
+
+        for (let i = 0; i < snake.length; i++) {
+            if (head.x === snake[i].x && head.y === snake[i].y) {
+                endGame();
+                return;
+            }
+        }
+
+        snake.unshift(head);
+
+        if (head.x === food.x && head.y === food.y) {
+            score += 10;
+            scoreElement.textContent = score;
+            if (score > highScore) {
+                highScore = score;
+                highScoreElement.textContent = highScore;
+                localStorage.setItem('snakeHighScore', highScore);
+            }
+            spawnFood();
+        } else {
+            snake.pop();
+        }
+    }
+
+    function endGame() {
+        gameState = 'gameover';
+        clearInterval(gameInterval);
+        hudArea.style.display = "none";
+        touchControls.style.display = "none";
+    }
+
+    function draw() {
+        ctx.fillStyle = "#020408";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.strokeStyle = "rgba(0, 240, 255, 0.05)";
+        ctx.lineWidth = 1;
+        for (let i = 0; i < canvas.width; i += gridSize) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+        }
+
+        if (gameState === 'playing') {
+            ctx.save();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#ff3366";
+            ctx.fillStyle = "#ff3366";
+            let fx = food.x * gridSize + gridSize / 2;
+            let fy = food.y * gridSize + gridSize / 2;
+            ctx.beginPath();
+            ctx.arc(fx, fy, gridSize / 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            snake.forEach((part, index) => {
+                ctx.save();
+                ctx.shadowBlur = index === 0 ? 15 : 8;
+                ctx.shadowColor = index === 0 ? "#00f0ff" : "#7209b7";
+                ctx.fillStyle = index === 0 ? "#00f0ff" : "#4cc9f0";
+                ctx.fillRect(part.x * gridSize + 1, part.y * gridSize + 1, gridSize - 2, gridSize - 2);
+                ctx.restore();
+            });
+        } 
+        else if (gameState === 'menu') {
+            menuAnim += 0.05;
+            
+            ctx.save();
+            ctx.fillStyle = "#00f0ff";
+            ctx.font = "800 22px 'Plus Jakarta Sans'";
+            ctx.textAlign = "center";
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = "#00f0ff";
+            ctx.fillText("CYBER SNAKE", canvas.width / 2, 110);
+            
+            ctx.fillStyle = "#ff007f";
+            ctx.font = "800 12px 'Plus Jakarta Sans'";
+            ctx.shadowColor = "#ff007f";
+            ctx.shadowBlur = 15;
+            ctx.fillText("TRÒ CHƠI CON RẮN TƯƠNG LAI", canvas.width / 2, 138);
+            ctx.restore();
+
+            ctx.fillStyle = "#8892b0";
+            ctx.font = "12px 'Plus Jakarta Sans'";
+            ctx.textAlign = "center";
+            ctx.fillText("Kỷ lục hiện tại: " + highScore, canvas.width / 2, 180);
+
+            let btnPulse = Math.sin(menuAnim * 3) * 4;
+            ctx.save();
+            ctx.shadowBlur = 20 + btnPulse;
+            ctx.shadowColor = "#00f0ff";
+            ctx.fillStyle = "rgba(0, 240, 255, 0.15)";
+            ctx.strokeStyle = "#00f0ff";
+            ctx.lineWidth = 2;
+            ctx.fillRect(80, 225, 200, 50);
+            ctx.strokeRect(80, 225, 200, 50);
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "800 16px 'Plus Jakarta Sans'";
+            ctx.fillText("BẮT ĐẦU CHƠI", canvas.width / 2, 256);
+            ctx.restore();
+        }
+        else if (gameState === 'gameover') {
+            ctx.fillStyle = "rgba(2, 4, 8, 0.95)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = "#ff3366";
+            ctx.font = "bold 24px 'Plus Jakarta Sans'";
+            ctx.textAlign = "center";
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#ff3366";
+            ctx.fillText("TRÒ CHƠI KẾT THÚ", canvas.width / 2, 120);
+            ctx.shadowBlur = 0;
+
+            ctx.fillStyle = "#fff";
+            ctx.font = "15px 'Plus Jakarta Sans'";
+            ctx.fillText("Điểm đạt được: " + score, canvas.width / 2, 170);
+            ctx.fillText("Kỷ lục: " + highScore, canvas.width / 2, 200);
+
+            ctx.save();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#00f0ff";
+            ctx.fillStyle = "rgba(0, 240, 255, 0.2)";
+            ctx.strokeStyle = "#00f0ff";
+            ctx.lineWidth = 2;
+            ctx.fillRect(80, 245, 200, 50);
+            ctx.strokeRect(80, 245, 200, 50);
+            ctx.fillStyle = "#00f0ff";
+            ctx.font = "bold 16px 'Plus Jakarta Sans'";
+            ctx.fillText("CHƠI LẠI", canvas.width / 2, 277);
+            ctx.restore();
+        }
+    }
+
+    setInterval(draw, 1000 / 60);
+
+    canvas.addEventListener("click", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        if (gameState === 'menu') {
+            if (mouseX >= 80 && mouseX <= 280 && mouseY >= 225 && mouseY <= 275) {
+                startGame();
+            }
+        } else if (gameState === 'gameover') {
+            if (mouseX >= 80 && mouseX <= 280 && mouseY >= 245 && mouseY <= 295) {
+                gameState = 'menu';
+            }
+        }
+    });
+
+    window.addEventListener("keydown", (e) => {
+        if (gameState !== 'playing') return;
+        if ((e.key === "ArrowUp" || e.key === "w" || e.key === "W") && dy === 0) {
+            nextDx = 0; nextDy = -1; e.preventDefault();
+        }
+        else if ((e.key === "ArrowDown" || e.key === "s" || e.key === "S") && dy === 0) {
+            nextDx = 0; nextDy = 1; e.preventDefault();
+        }
+        else if ((e.key === "ArrowLeft" || e.key === "a" || e.key === "A") && dx === 0) {
+            nextDx = -1; nextDy = 0; e.preventDefault();
+        }
+        else if ((e.key === "ArrowRight" || e.key === "d" || e.key === "D") && dx === 0) {
+            nextDx = 1; nextDy = 0; e.preventDefault();
+        }
+    });
+
+    const btnUp = document.getElementById("btnUp");
+    const btnDown = document.getElementById("btnDown");
+    const btnLeft = document.getElementById("btnLeft");
+    const btnRight = document.getElementById("btnRight");
+
+    btnUp.addEventListener("touchstart", (e) => { if (dy === 0) { nextDx = 0; nextDy = -1; } e.preventDefault(); });
+    btnUp.addEventListener("mousedown", () => { if (dy === 0) { nextDx = 0; nextDy = -1; } });
+
+    btnDown.addEventListener("touchstart", (e) => { if (dy === 0) { nextDx = 0; nextDy = 1; } e.preventDefault(); });
+    btnDown.addEventListener("mousedown", () => { if (dy === 0) { nextDx = 0; nextDy = 1; } });
+
+    btnLeft.addEventListener("touchstart", (e) => { if (dx === 0) { nextDx = -1; nextDy = 0; } e.preventDefault(); });
+    btnLeft.addEventListener("mousedown", () => { if (dx === 0) { nextDx = -1; nextDy = 0; } });
+
+    btnRight.addEventListener("touchstart", (e) => { if (dx === 0) { nextDx = 1; nextDy = 0; } e.preventDefault(); });
+    btnRight.addEventListener("mousedown", () => { if (dx === 0) { nextDx = 1; nextDy = 0; } });
+</script>
+
+</body>
+</html>
+"""
+
+# Hiển thị game bên trong Streamlit với chiều cao phù hợp
+components.html(game_html, height=600)
